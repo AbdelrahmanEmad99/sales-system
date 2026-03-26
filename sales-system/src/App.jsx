@@ -2,137 +2,156 @@ import { useState, useMemo, useRef, useEffect } from "react";
 
 /* ─── Master data ─────────────────────────────────────────────────── */
 const STOCK = [
-  { id:1,  bayan:"استمارة الرقم القومي فئة 50",  raseed:500,  qeema:50  },
-  { id:2,  bayan:"استمارة الرقم القومي فئة 25",  raseed:50,   qeema:125 },
-  { id:3,  bayan:"استمارة الرقم القومي فئة 85",  raseed:300,  qeema:185 },
-  { id:5,  bayan:"شهادات ميلاد أول مرة",          raseed:200,  qeema:45  },
-  { id:6,  bayan:"شهادات ميلاد",                  raseed:1500, qeema:25  },
-  { id:7,  bayan:"شهادات وفاة",                   raseed:200,  qeema:25  },
-  { id:8,  bayan:"وثيقة زواج",                    raseed:200,  qeema:40  },
-  { id:9,  bayan:"وثيقة طلاق",                    raseed:100,  qeema:40  },
-  { id:10, bayan:"قيد العائلي مميكن",              raseed:100,  qeema:35  },
-  { id:11, bayan:"تعذر قيد عائلي",                raseed:100,  qeema:35  },
-  { id:12, bayan:"قيد العائلي (مميز)",             raseed:50,   qeema:80  },
-  { id:13, bayan:"تعذر قيد عائلي (مميز)",         raseed:50,   qeema:80  },
+  { id: 1, bayan: "استمارة الرقم القومي فئة 50", raseed: 500, qeema: 50 },
+  { id: 2, bayan: "استمارة الرقم القومي فئة 125", raseed: 50, qeema: 125 },
+  { id: 3, bayan: "استمارة الرقم القومي فئة 185", raseed: 300, qeema: 185 },
+  { id: 5, bayan: "شهادات ميلاد أول مرة", raseed: 200, qeema: 45 },
+  { id: 6, bayan: "شهادات ميلاد", raseed: 1500, qeema: 25 },
+  { id: 7, bayan: "شهادات وفاة", raseed: 200, qeema: 25 },
+  { id: 8, bayan: "وثيقة زواج", raseed: 200, qeema: 40 },
+  { id: 9, bayan: "وثيقة طلاق", raseed: 100, qeema: 40 },
+  { id: 10, bayan: "قيد العائلي مميكن", raseed: 100, qeema: 35 },
+  { id: 11, bayan: "تعذر قيد عائلي", raseed: 100, qeema: 35 },
+  { id: 12, bayan: "قيد العائلي (مميز)", raseed: 50, qeema: 80 },
+  { id: 13, bayan: "تعذر قيد عائلي (مميز)", raseed: 50, qeema: 80 },
 ];
 
 /* ─── Helpers ─────────────────────────────────────────────────────── */
 const todayStr = () => new Date().toISOString().split("T")[0];
-const addDays  = (d,n) => { const dt=new Date(d+"T00:00:00"); dt.setDate(dt.getDate()+n); return dt.toISOString().split("T")[0]; };
-const fmtLong  = d => new Date(d+"T00:00:00").toLocaleDateString("ar-EG",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
-const fmtShort = d => new Date(d+"T00:00:00").toLocaleDateString("ar-EG",{month:"short",day:"numeric"});
-const fmtPrint = d => new Date(d+"T00:00:00").toLocaleDateString("ar-EG",{year:"numeric",month:"2-digit",day:"2-digit"});
+const addDays = (d, n) => { const dt = new Date(d + "T00:00:00"); dt.setDate(dt.getDate() + n); return dt.toISOString().split("T")[0]; };
+const fmtLong = d => new Date(d + "T00:00:00").toLocaleDateString("ar-EG", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+const fmtShort = d => new Date(d + "T00:00:00").toLocaleDateString("ar-EG", { month: "short", day: "numeric" });
+const fmtPrint = d => new Date(d + "T00:00:00").toLocaleDateString("ar-EG", { year: "numeric", month: "2-digit", day: "2-digit" });
 
-function freshItems(coMap){
-  return STOCK.map(s=>({ id:s.id, mabea:0, visa:0, tawreed:0,
-    carryOver: coMap ? (coMap[s.id]??s.raseed) : s.raseed }));
+function freshItems(coMap) {
+  return STOCK.map(s => ({
+    id: s.id, mabea: 0, visa: 0, tawreed: 0, raseed: s.raseed,
+    carryOver: coMap ? (coMap[s.id] ?? s.raseed) : s.raseed
+  }));
 }
 
-const KEY  = "sales_v4";
-const load = () => { try{ return JSON.parse(localStorage.getItem(KEY))||{}; }catch{ return {}; } };
+const KEY = "sales_v4";
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
 const persist = h => localStorage.setItem(KEY, JSON.stringify(h));
 
 /* ─── App ─────────────────────────────────────────────────────────── */
 export default function App() {
-  const [history,  setHistory]  = useState(load);
+  const [history, setHistory] = useState(load);
   const [viewDate, setViewDate] = useState(todayStr());
-  const [editing,  setEditing]  = useState(false);
-  const [saved,    setSaved]    = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [raseedInputs, setRaseedInputs] = useState({});
   const navRef = useRef(null);
 
-  const sortedDates = useMemo(()=>Object.keys(history).sort(),[history]);
-  const allDates    = useMemo(()=>[...new Set([...sortedDates,todayStr()])].sort(),[sortedDates]);
-  const viewIdx     = allDates.includes(viewDate) ? allDates.indexOf(viewDate) : allDates.length-1;
-  const isPast      = viewDate < todayStr();
-  const readOnly    = isPast && !editing;
+  const sortedDates = useMemo(() => Object.keys(history).sort(), [history]);
+  const allDates = useMemo(() => [...new Set([...sortedDates, todayStr()])].sort(), [sortedDates]);
+  const viewIdx = allDates.includes(viewDate) ? allDates.indexOf(viewDate) : allDates.length - 1;
+  const isPast = viewDate < todayStr();
+  const readOnly = isPast && !editing;
 
-  function coMap(date){
-    const prev = sortedDates.filter(d=>d<date).pop();
-    if(!prev) return null;
-    const m={};
-    history[prev].items.forEach(i=>{ m[i.id]=i.carryOver-i.mabea; });
+  function coMap(date) {
+    const prev = sortedDates.filter(d => d < date).pop();
+    if (!prev) return null;
+    const m = {};
+    history[prev].items.forEach(i => { m[i.id] = i.carryOver - i.mabea; });
     return m;
   }
 
-  const currentDay = useMemo(()=>{
-    return history[viewDate] ?? { items:freshItems(coMap(viewDate)), closed:false };
-  },[viewDate,history]);
+  const currentDay = useMemo(() => {
+    return history[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+  }, [viewDate, history]);
 
-  function updateItem(id,field,raw){
-    const val=Math.max(0,Number(raw)||0);
-    setHistory(prev=>{
-      const base=prev[viewDate]??{items:freshItems(coMap(viewDate)),closed:false};
-      const items=base.items.map(item=>{
-        if(item.id!==id) return item;
-        let u={...item,[field]:val};
-        if(field==="mabea")   u.mabea  =Math.min(val,item.carryOver);
-        if(field==="visa")    u.visa   =Math.min(val,Math.max(0,u.mabea-u.tawreed));
-        if(field==="tawreed") u.tawreed=Math.min(val,Math.max(0,u.mabea-u.visa));
+  function updateItem(id, field, raw) {
+    const val = Math.max(0, Number(raw) || 0);
+    setHistory(prev => {
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+      const items = base.items.map(item => {
+        if (item.id !== id) return item;
+        let u = { ...item, [field]: val };
+        if (field === "mabea") u.mabea = Math.min(val, item.carryOver);
+        if (field === "visa") u.visa = Math.min(val, Math.max(0, u.mabea - u.tawreed));
+        if (field === "tawreed") u.tawreed = Math.min(val, Math.max(0, u.mabea - u.visa));
         return u;
       });
-      const updated={...prev,[viewDate]:{...base,items}};
+      const updated = { ...prev, [viewDate]: { ...base, items } };
       persist(updated); return updated;
     });
   }
 
-  function handleSave(){
-    setHistory(prev=>{
-      const base=prev[viewDate]??{items:freshItems(coMap(viewDate)),closed:false};
-      const updated={...prev,[viewDate]:{...base,closed:true}};
+  function addRaseed(id, addAmount) {
+    const amount = Math.max(0, Number(addAmount) || 0);
+    if (amount === 0) return;
+    setHistory(prev => {
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+      const items = base.items.map(item => {
+        if (item.id !== id) return item;
+        const newRaseed = item.raseed + amount;
+        const newCarry = item.carryOver + amount;
+        return { ...item, raseed: newRaseed, carryOver: newCarry };
+      });
+      const updated = { ...prev, [viewDate]: { ...base, items } };
       persist(updated); return updated;
     });
-    setSaved(true); setTimeout(()=>setSaved(false),2200);
   }
 
-  function handleCloseNext(){
-    setHistory(prev=>{
-      const base=prev[viewDate]??{items:freshItems(coMap(viewDate)),closed:false};
-      const updated={...prev,[viewDate]:{...base,closed:true}};
+  function handleSave() {
+    setHistory(prev => {
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+      const updated = { ...prev, [viewDate]: { ...base, closed: true } };
       persist(updated); return updated;
     });
-    setViewDate(addDays(viewDate,1)); setEditing(false);
+    setSaved(true); setTimeout(() => setSaved(false), 2200);
   }
 
-  function goTo(d){ setViewDate(d); setEditing(false); }
+  function handleCloseNext() {
+    setHistory(prev => {
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+      const updated = { ...prev, [viewDate]: { ...base, closed: true } };
+      persist(updated); return updated;
+    });
+    setViewDate(addDays(viewDate, 1)); setEditing(false);
+  }
 
-  useEffect(()=>{
-    const el=navRef.current?.querySelector(".np.act");
-    el?.scrollIntoView({inline:"center",behavior:"smooth",block:"nearest"});
-  },[viewDate,allDates.length]);
+  function goTo(d) { setViewDate(d); setEditing(false); }
+
+  useEffect(() => {
+    const el = navRef.current?.querySelector(".np.act");
+    el?.scrollIntoView({ inline: "center", behavior: "smooth", block: "nearest" });
+  }, [viewDate, allDates.length]);
 
   /* enriched rows */
-  const rows = currentDay.items.map(item=>{
-    const s=STOCK.find(s=>s.id===item.id);
-    const mablagh=item.mabea*s.qeema;
-    const kash=(item.mabea-item.visa-item.tawreed)*s.qeema;
-    const baqi=item.carryOver-item.mabea;
-    return{...item,...s,mablagh,kash,baqi};
+  const rows = currentDay.items.map(item => {
+    const s = STOCK.find(s => s.id === item.id);
+    const mablagh = item.mabea * s.qeema;
+    const kash = (item.mabea - item.visa - item.tawreed) * s.qeema;
+    const baqi = item.carryOver - item.mabea;
+    return { ...item, ...s, mablagh, kash, baqi };
   });
 
-  const totals=rows.reduce(
-    (a,i)=>({mablagh:a.mablagh+i.mablagh,visa:a.visa+i.visa*i.qeema,tawreed:a.tawreed+i.tawreed*i.qeema,kash:a.kash+i.kash}),
-    {mablagh:0,visa:0,tawreed:0,kash:0}
+  const totals = rows.reduce(
+    (a, i) => ({ mablagh: a.mablagh + i.mablagh, visa: a.visa + i.visa * i.qeema, tawreed: a.tawreed + i.tawreed * i.qeema, kash: a.kash + i.kash }),
+    { mablagh: 0, visa: 0, tawreed: 0, kash: 0 }
   );
 
   /* ── Print handler ── */
-  function handlePrint(){
+  function handlePrint() {
     // build a standalone HTML page and open print dialog
-    const tableRows = rows.map((item,idx)=>`
+    const tableRows = rows.map((item, idx) => `
       <tr>
         <td>${item.id}</td>
         <td class="bayan-cell">${item.bayan}</td>
         <td>${item.raseed}</td>
         <td class="carry">${item.carryOver}</td>
         <td>${item.qeema}</td>
-        <td class="mabea-cell">${item.mabea||0}</td>
-        <td>${item.mablagh>0?item.mablagh.toLocaleString("ar-EG"):"—"}</td>
-        <td class="visa-cell">${item.visa||0}</td>
-        <td class="tawreed-cell">${item.tawreed||0}</td>
-        <td>${item.kash>0?item.kash.toLocaleString("ar-EG"):"—"}</td>
-        <td class="${item.baqi>0?"pos":item.baqi===0?"zero":"neg"}">${item.baqi}</td>
+        <td class="mabea-cell">${item.mabea || 0}</td>
+        <td>${item.mablagh > 0 ? item.mablagh.toLocaleString("ar-EG") : "—"}</td>
+        <td class="visa-cell">${item.visa || 0}</td>
+        <td class="tawreed-cell">${item.tawreed || 0}</td>
+        <td>${item.kash > 0 ? item.kash.toLocaleString("ar-EG") : "—"}</td>
+        <td class="${item.baqi > 0 ? "pos" : item.baqi === 0 ? "zero" : "neg"}">${item.baqi}</td>
       </tr>`).join("");
 
-    const html=`<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8"/>
@@ -217,7 +236,7 @@ export default function App() {
 <!-- DATE BAR -->
 <div class="date-bar">
   <span><span class="label">التاريخ: </span><span class="value">${fmtPrint(viewDate)}</span></span>
-  <span><span class="label">اليوم: </span><span class="value">${new Date(viewDate+"T00:00:00").toLocaleDateString("ar-EG",{weekday:"long"})}</span></span>
+  <span><span class="label">اليوم: </span><span class="value">${new Date(viewDate + "T00:00:00").toLocaleDateString("ar-EG", { weekday: "long" })}</span></span>
   <span><span class="label">إجمالي المبيعات: </span><span class="value">${totals.mablagh.toLocaleString("ar-EG")} جنيه</span></span>
 </div>
 
@@ -262,7 +281,7 @@ export default function App() {
 <!-- AFTER TAWREED -->
 <div class="after-tawreed">
   <span class="lbl">الإجمالي بعد خصم التوريد:</span>
-  <span class="val">${(totals.mablagh-totals.tawreed).toLocaleString("ar-EG")} جنيه</span>
+  <span class="val">${(totals.mablagh - totals.tawreed).toLocaleString("ar-EG")} جنيه</span>
 </div>
 
 <!-- FOOTER / SIGNATURES -->
@@ -281,14 +300,14 @@ export default function App() {
 <script>window.onload=()=>{ window.print(); }</script>
 </body></html>`;
 
-    const win=window.open("","_blank");
+    const win = window.open("", "_blank");
     win.document.write(html);
     win.document.close();
   }
 
   /* ── JSX ─────────────────────────────────────────────────────────── */
   return (
-    <div style={{direction:"rtl",fontFamily:"'Cairo',sans-serif",minHeight:"100vh",background:"#0d0f18",color:"#e8e8f0"}}>
+    <div style={{ direction: "rtl", fontFamily: "'Cairo',sans-serif", minHeight: "100vh", background: "#0d0f18", color: "#e8e8f0" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -335,44 +354,44 @@ export default function App() {
       `}</style>
 
       {/* ══ OFFICIAL HEADER BANNER ═══════════════════════════════════════ */}
-      <div style={{background:"linear-gradient(160deg,#0e1a38,#162954)",borderBottom:"3px double rgba(200,168,75,.6)",padding:"18px 24px 14px",textAlign:"center",position:"relative"}}>
+      <div style={{ background: "linear-gradient(160deg,#0e1a38,#162954)", borderBottom: "3px double rgba(200,168,75,.6)", padding: "18px 24px 14px", textAlign: "center", position: "relative" }}>
         {/* decorative lines */}
-        <div style={{position:"absolute",top:0,left:0,right:0,height:"3px",background:"linear-gradient(90deg,transparent,#c8a84b,transparent)"}}/>
-        <div style={{fontSize:10,color:"#8a9fc0",letterSpacing:3,marginBottom:8,textTransform:"uppercase"}}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "3px", background: "linear-gradient(90deg,transparent,#c8a84b,transparent)" }} />
+        <div style={{ fontSize: 10, color: "#8a9fc0", letterSpacing: 3, marginBottom: 8, textTransform: "uppercase" }}>
           وزارة الداخلية — جمهورية مصر العربية
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center" }}>
           {[
             "قـــطـــاع الأحـــوال الـمـدنـيـة",
             "الإدارة الـعـامـة لـشـئـون الـمـنـاطـق",
             "إدارة شـرطـة الأحـوال الـمـدنـيـة بـالـقـاهـرة",
             "سـجـل مـدنـي الـشـروق",
-          ].map((line,i)=>(
+          ].map((line, i) => (
             <div key={i} style={{
-              fontSize: i===3?20:i===0?17:15,
-              fontWeight: i===3?900:700,
-              color: i===3?"#e8c86b":"#c8d8f0",
-              letterSpacing: i===3?3:1,
-              lineHeight:1.5,
+              fontSize: i === 3 ? 20 : i === 0 ? 17 : 15,
+              fontWeight: i === 3 ? 900 : 700,
+              color: i === 3 ? "#e8c86b" : "#c8d8f0",
+              letterSpacing: i === 3 ? 3 : 1,
+              lineHeight: 1.5,
             }}>{line}</div>
           ))}
         </div>
-        <div style={{marginTop:10,display:"inline-block",padding:"4px 28px",border:"1.5px solid rgba(200,168,75,.5)",borderRadius:6,fontSize:13,color:"#c8a84b",fontWeight:700,background:"rgba(200,168,75,.07)",letterSpacing:2}}>
+        <div style={{ marginTop: 10, display: "inline-block", padding: "4px 28px", border: "1.5px solid rgba(200,168,75,.5)", borderRadius: 6, fontSize: 13, color: "#c8a84b", fontWeight: 700, background: "rgba(200,168,75,.07)", letterSpacing: 2 }}>
           سـجـل الـمـبـيـعـات الـيـومـيـة
         </div>
       </div>
 
       {/* ══ ACTION BAR ═══════════════════════════════════════════════════ */}
-      <div style={{background:"#13162a",borderBottom:"1px solid rgba(255,255,255,.07)",padding:"11px 20px",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-          <div style={{fontSize:12,color:"#777",marginLeft:6}}>{fmtLong(viewDate)}</div>
+      <div style={{ background: "#13162a", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "11px 20px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12, color: "#777", marginLeft: 6 }}>{fmtLong(viewDate)}</div>
           {currentDay.closed && <span className="tag tcl">✔ محفوظ</span>}
-          {readOnly          && <span className="tag tro">🔒 عرض فقط</span>}
+          {readOnly && <span className="tag tro">🔒 عرض فقط</span>}
         </div>
 
         {isPast && (
-          <button className="bedit" onClick={()=>setEditing(e=>!e)}>
-            {editing?"🔒 إغلاق التعديل":"✏️ تعديل"}
+          <button className="bedit" onClick={() => setEditing(e => !e)}>
+            {editing ? "🔒 إغلاق التعديل" : "✏️ تعديل"}
           </button>
         )}
 
@@ -383,8 +402,8 @@ export default function App() {
 
         {!readOnly && (
           <>
-            <button className={`bsave${saved?" ok":""}`} onClick={handleSave}>
-              {saved?"✔ تم الحفظ":"💾 حفظ"}
+            <button className={`bsave${saved ? " ok" : ""}`} onClick={handleSave}>
+              {saved ? "✔ تم الحفظ" : "💾 حفظ"}
             </button>
             <button className="bmain" onClick={handleCloseNext}>
               📅 إغلاق ← اليوم التالي
@@ -394,100 +413,117 @@ export default function App() {
       </div>
 
       {/* ══ SUMMARY CARDS ════════════════════════════════════════════════ */}
-      <div style={{background:"#10121e",borderBottom:"1px solid rgba(255,255,255,.06)",padding:"12px 20px",display:"flex",gap:10,flexWrap:"wrap"}}>
+      <div style={{ background: "#10121e", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "12px 20px", display: "flex", gap: 10, flexWrap: "wrap" }}>
         {[
-          {label:"الإجمالي", val:totals.mablagh,                    color:"#c8a84b",icon:"📊"},
-          {label:"فيزا",     val:totals.visa,                        color:"#64b4ff",icon:"💳"},
-          {label:"توريد",    val:totals.tawreed,                     color:"#50d090",icon:"🏦"},
-          {label:"كاش",      val:totals.kash,                        color:"#ffb347",icon:"💵"},
-          {label:"بعد التوريد", val:totals.mablagh-totals.tawreed,   color:"#e8e0c0",icon:"🗓"},
-        ].map(c=>(
-          <div key={c.label} style={{flex:"1 1 120px",background:"rgba(255,255,255,.03)",border:`1px solid ${c.color}28`,borderRadius:10,padding:"10px 14px"}}>
-            <div style={{fontSize:10.5,color:"#666",marginBottom:2}}>{c.icon} {c.label}</div>
-            <div className="num" style={{fontSize:18,fontWeight:900,color:c.color}}>{c.val.toLocaleString("ar-EG")} ج</div>
+          { label: "الإجمالي", val: totals.mablagh, color: "#c8a84b", icon: "📊" },
+          { label: "فيزا", val: totals.visa, color: "#64b4ff", icon: "💳" },
+          { label: "توريد", val: totals.tawreed, color: "#50d090", icon: "🏦" },
+          { label: "كاش", val: totals.kash, color: "#ffb347", icon: "💵" },
+          { label: "بعد التوريد", val: totals.mablagh - totals.tawreed, color: "#e8e0c0", icon: "🗓" },
+        ].map(c => (
+          <div key={c.label} style={{ flex: "1 1 120px", background: "rgba(255,255,255,.03)", border: `1px solid ${c.color}28`, borderRadius: 10, padding: "10px 14px" }}>
+            <div style={{ fontSize: 10.5, color: "#666", marginBottom: 2 }}>{c.icon} {c.label}</div>
+            <div className="num" style={{ fontSize: 18, fontWeight: 900, color: c.color }}>{c.val.toLocaleString("ar-EG")} ج</div>
           </div>
         ))}
       </div>
 
       {/* ══ DAY NAVIGATOR ════════════════════════════════════════════════ */}
-      <div style={{background:"#0f1120",borderBottom:"1px solid rgba(255,255,255,.07)",padding:"10px 14px",display:"flex",gap:8,alignItems:"center"}}>
-        <button className="arr" disabled={viewIdx<=0} onClick={()=>goTo(allDates[viewIdx-1])}>‹</button>
-        <div ref={navRef} style={{display:"flex",gap:6,overflowX:"auto",flex:1,padding:"2px 0",scrollbarWidth:"none"}}>
-          {allDates.map(d=>{
-            const cl=!!history[d]?.closed;
-            const isT=d===todayStr();
-            return(
-              <button key={d} className={`np${d===viewDate?" act":""}${cl?" cp":""}`}
-                onClick={()=>goTo(d)} title={fmtLong(d)}>
-                {fmtShort(d)}{isT?" 🟢":cl?" ✔":""}
+      <div style={{ background: "#0f1120", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "10px 14px", display: "flex", gap: 8, alignItems: "center" }}>
+        <button className="arr" disabled={viewIdx <= 0} onClick={() => goTo(allDates[viewIdx - 1])}>‹</button>
+        <div ref={navRef} style={{ display: "flex", gap: 6, overflowX: "auto", flex: 1, padding: "2px 0", scrollbarWidth: "none" }}>
+          {allDates.map(d => {
+            const cl = !!history[d]?.closed;
+            const isT = d === todayStr();
+            return (
+              <button key={d} className={`np${d === viewDate ? " act" : ""}${cl ? " cp" : ""}`}
+                onClick={() => goTo(d)} title={fmtLong(d)}>
+                {fmtShort(d)}{isT ? " 🟢" : cl ? " ✔" : ""}
               </button>
             );
           })}
         </div>
-        <button className="arr" disabled={viewIdx>=allDates.length-1} onClick={()=>goTo(allDates[viewIdx+1])}>›</button>
-        <input type="date" value={viewDate} onChange={e=>goTo(e.target.value)}
-          style={{background:"rgba(200,168,75,.07)",border:"1px solid rgba(200,168,75,.28)",borderRadius:8,color:"#e8c86b",fontFamily:"'Cairo',sans-serif",fontSize:12,padding:"5px 10px",outline:"none",flexShrink:0}}/>
+        <button className="arr" disabled={viewIdx >= allDates.length - 1} onClick={() => goTo(allDates[viewIdx + 1])}>›</button>
+        <input type="date" value={viewDate} onChange={e => goTo(e.target.value)}
+          style={{ background: "rgba(200,168,75,.07)", border: "1px solid rgba(200,168,75,.28)", borderRadius: 8, color: "#e8c86b", fontFamily: "'Cairo',sans-serif", fontSize: 12, padding: "5px 10px", outline: "none", flexShrink: 0 }} />
       </div>
 
       {/* ══ TABLE ════════════════════════════════════════════════════════ */}
-      <div className="scrollx" style={{padding:"16px 14px"}}>
-        <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:1040}}>
+      <div className="scrollx" style={{ padding: "16px 14px" }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1040 }}>
           <thead>
             <tr>
-              <th style={{width:28}}>م</th>
-              <th style={{textAlign:"right",minWidth:180}}>البيان</th>
+              <th style={{ width: 28 }}>م</th>
+              <th style={{ textAlign: "right", minWidth: 180 }}>البيان</th>
               <th>الرصيد الأصلي</th>
-              <th style={{background:"#191f30",color:"#9ac8ff"}}>الباقي من أمس</th>
+              <th style={{ background: "#1a2018", color: "#80e0b0" }}>إضافة عهده </th>
+              <th style={{ background: "#191f30", color: "#9ac8ff" }}>الباقي من أمس</th>
               <th>القيمة</th>
-              <th style={{background:"#1a2018"}}>المباع اليوم</th>
+              <th style={{ background: "#1a2018" }}>المباع اليوم</th>
               <th>المبلغ</th>
-              <th style={{background:"#181d2e",color:"#64b4ff"}}>فيزا</th>
-              <th style={{background:"#182820",color:"#50d090"}}>توريد</th>
+              <th style={{ background: "#181d2e", color: "#64b4ff" }}>فيزا</th>
+              <th style={{ background: "#182820", color: "#50d090" }}>توريد</th>
               <th>كاش</th>
-              <th style={{color:"#80e0b0"}}>الباقي لغد</th>
+              <th style={{ color: "#80e0b0" }}>الباقي لغد</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(item=>(
+            {rows.map(item => (
               <tr key={item.id} className="dr">
-                <td style={{color:"#444",fontSize:11}}>{item.id}</td>
-                <td style={{textAlign:"right",color:"#e0d8c0",fontWeight:600}}>{item.bayan}</td>
-                <td><span className="num" style={{color:"#505060"}}>{item.raseed}</span></td>
-                <td style={{background:"rgba(100,180,255,.04)"}}>
-                  <span className="num" style={{fontWeight:700,color:item.carryOver>0?"#9ac8ff":"#ff6060"}}>{item.carryOver}</span>
+                <td style={{ color: "#444", fontSize: 11 }}>{item.id}</td>
+                <td style={{ textAlign: "right", color: "#e0d8c0", fontWeight: 600 }}>{item.bayan}</td>
+                <td><span className="num" style={{ color: "#505060" }}>{item.raseed}</span></td>
+                <td style={{ background: "rgba(80,208,144,.03)" }}>
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <input type="number" className="ci ci-t" min={0} placeholder="0"
+                      disabled={readOnly}
+                      value={raseedInputs[item.id] || ""} style={{ flex: 1 }}
+                      onChange={e => setRaseedInputs({ ...raseedInputs, [item.id]: e.target.value })} />
+                    <button onClick={() => { addRaseed(item.id, raseedInputs[item.id]); setRaseedInputs({ ...raseedInputs, [item.id]: "" }); }}
+                      disabled={readOnly || !raseedInputs[item.id]}
+                      style={{ padding: "5px 8px", background: "rgba(80,208,144,.2)", border: "1px solid #50d090", borderRadius: 4, color: "#50d090", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all .18s" }}
+                      onMouseEnter={e => { e.target.style.background = "rgba(80,208,144,.35)"; }}
+                      onMouseLeave={e => { e.target.style.background = "rgba(80,208,144,.2)"; }}
+                    >➕</button>
+                  </div>
                 </td>
-                <td><span className="num" style={{color:"#c8a84b"}}>{item.qeema}</span></td>
-                <td style={{background:"rgba(200,168,75,.03)"}}>
+                <td style={{ background: "rgba(100,180,255,.04)" }}>
+                  <span className="num" style={{ fontWeight: 700, color: item.carryOver > 0 ? "#9ac8ff" : "#ff6060" }}>{item.carryOver}</span>
+                </td>
+                <td><span className="num" style={{ color: "#c8a84b" }}>{item.qeema}</span></td>
+                <td style={{ background: "rgba(200,168,75,.03)" }}>
                   <input type="number" className="ci" min={0} max={item.carryOver}
-                    value={item.mabea||""} placeholder="0" disabled={readOnly}
-                    onChange={e=>updateItem(item.id,"mabea",e.target.value)}/>
+                    value={item.mabea || ""} placeholder="0" disabled={readOnly}
+                    onChange={e => updateItem(item.id, "mabea", e.target.value)} />
                 </td>
-                <td><span className="num" style={{color:item.mablagh>0?"#e8c86b":"#2a2a35"}}>{item.mablagh>0?item.mablagh.toLocaleString("ar-EG"):"—"}</span></td>
-                <td style={{background:"rgba(100,180,255,.03)"}}>
+                <td><span className="num" style={{ color: item.mablagh > 0 ? "#e8c86b" : "#2a2a35" }}>{item.mablagh > 0 ? item.mablagh.toLocaleString("ar-EG") : "—"}</span></td>
+                <td style={{ background: "rgba(100,180,255,.03)" }}>
                   <input type="number" className="ci ci-v" min={0} max={item.mabea}
-                    value={item.visa||""} placeholder="0" disabled={readOnly}
-                    onChange={e=>updateItem(item.id,"visa",e.target.value)}/>
+                    value={item.visa || ""} placeholder="0" disabled={readOnly}
+                    onChange={e => updateItem(item.id, "visa", e.target.value)} />
                 </td>
-                <td style={{background:"rgba(80,208,144,.03)"}}>
+                <td style={{ background: "rgba(80,208,144,.03)" }}>
                   <input type="number" className="ci ci-t" min={0} max={item.mabea}
-                    value={item.tawreed||""} placeholder="0" disabled={readOnly}
-                    onChange={e=>updateItem(item.id,"tawreed",e.target.value)}/>
+                    value={item.tawreed || ""} placeholder="0" disabled={readOnly}
+                    onChange={e => updateItem(item.id, "tawreed", e.target.value)} />
                 </td>
-                <td><span className="num" style={{color:item.kash>0?"#f0e6c0":"#2a2a35"}}>{item.kash>0?item.kash.toLocaleString("ar-EG"):"—"}</span></td>
+                <td><span className="num" style={{ color: item.kash > 0 ? "#f0e6c0" : "#2a2a35" }}>{item.kash > 0 ? item.kash.toLocaleString("ar-EG") : "—"}</span></td>
                 <td>
-                  <span className="num" style={{fontWeight:700,
-                    color:item.baqi>20?"#80e0b0":item.baqi>0?"#ffb347":"#ff6060"}}>
+                  <span className="num" style={{
+                    fontWeight: 700,
+                    color: item.baqi > 20 ? "#80e0b0" : item.baqi > 0 ? "#ffb347" : "#ff6060"
+                  }}>
                     {item.baqi}
                   </span>
                 </td>
               </tr>
             ))}
             <tr className="tot">
-              <td colSpan={6} style={{textAlign:"right",color:"#c8a84b",fontSize:13}}>الإجمالي</td>
-              <td><span className="num" style={{color:"#e8c86b"}}>{totals.mablagh.toLocaleString("ar-EG")} ج</span></td>
-              <td><span className="num" style={{color:"#64b4ff"}}>{totals.visa.toLocaleString("ar-EG")} ج</span></td>
-              <td><span className="num" style={{color:"#50d090"}}>{totals.tawreed.toLocaleString("ar-EG")} ج</span></td>
-              <td><span className="num" style={{color:"#ffb347"}}>{totals.kash.toLocaleString("ar-EG")} ج</span></td>
+              <td colSpan={7} style={{ textAlign: "right", color: "#c8a84b", fontSize: 13 }}>الإجمالي</td>
+              <td><span className="num" style={{ color: "#e8c86b" }}>{totals.mablagh.toLocaleString("ar-EG")} ج</span></td>
+              <td><span className="num" style={{ color: "#64b4ff" }}>{totals.visa.toLocaleString("ar-EG")} ج</span></td>
+              <td><span className="num" style={{ color: "#50d090" }}>{totals.tawreed.toLocaleString("ar-EG")} ج</span></td>
+              <td><span className="num" style={{ color: "#ffb347" }}>{totals.kash.toLocaleString("ar-EG")} ج</span></td>
               <td></td>
             </tr>
           </tbody>
@@ -495,11 +531,11 @@ export default function App() {
       </div>
 
       {/* ══ FOOTER ═══════════════════════════════════════════════════════ */}
-      <div style={{padding:"10px 16px 30px",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",borderTop:"1px solid rgba(255,255,255,.05)"}}>
+      <div style={{ padding: "10px 16px 30px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid rgba(255,255,255,.05)" }}>
         <span className="tag tv">💳 فيزا</span>
         <span className="tag tt">🏦 توريد</span>
         <span className="tag tk">💵 كاش</span>
-        <span style={{marginRight:"auto",fontSize:11,color:"#383848"}}>
+        <span style={{ marginRight: "auto", fontSize: 11, color: "#383848" }}>
           💾 يُحفظ تلقائياً — {allDates.length} يوم مسجّل
         </span>
       </div>
