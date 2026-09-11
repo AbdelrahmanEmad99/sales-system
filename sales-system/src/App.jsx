@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 
 /* ─── Master data ─────────────────────────────────────────────────── */
-const STOCK = [
+const INITIAL_STOCK = [
   { id: 1, bayan: "استمارة الرقم القومي فئة 50", raseed: 500, qeema: 50 },
   { id: 2, bayan: "استمارة الرقم القومي فئة 125", raseed: 50, qeema: 125 },
   { id: 3, bayan: "استمارة الرقم القومي فئة 185", raseed: 300, qeema: 185 },
@@ -23,8 +23,8 @@ const fmtLong = d => new Date(d + "T00:00:00").toLocaleDateString("ar-EG", { wee
 const fmtShort = d => new Date(d + "T00:00:00").toLocaleDateString("ar-EG", { month: "short", day: "numeric" });
 const fmtPrint = d => new Date(d + "T00:00:00").toLocaleDateString("ar-EG", { year: "numeric", month: "2-digit", day: "2-digit" });
 
-function freshItems(coMap) {
-  return STOCK.map(s => ({
+function freshItems(coMap, stockList) {
+  return stockList.map(s => ({
     id: s.id, mabea: 0, visa: 0, tawreed: 0, raseed: s.raseed,
     carryOver: coMap ? (coMap[s.id] ?? s.raseed) : s.raseed
   }));
@@ -33,14 +33,184 @@ function freshItems(coMap) {
 const KEY = "sales_v4";
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
 const persist = h => localStorage.setItem(KEY, JSON.stringify(h));
+const getNextStockId = list => list.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1;
 
-/* ─── App ─────────────────────────────────────────────────────────── */
+const USERS_KEY = "sales_auth_users";
+const SESSION_KEY = "sales_auth_session";
+const SESSION_TIMEOUT_MS = 20 * 60 * 1000;
+const loadUsers = () => { try { return JSON.parse(localStorage.getItem(USERS_KEY)) || []; } catch { return []; } };
+const saveUsers = users => localStorage.setItem(USERS_KEY, JSON.stringify(users));
+const loadSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || null; } catch { return null; } };
+const saveSession = user => localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+const clearSession = () => localStorage.removeItem(SESSION_KEY);
+const getUserDataKey = user => `sales_user_data_${encodeURIComponent((user || "").toLowerCase())}`;
+const loadUserData = user => {
+  if (!user) return { stock: INITIAL_STOCK, history: {} };
+  try {
+    const raw = localStorage.getItem(getUserDataKey(user));
+    if (!raw) return { stock: INITIAL_STOCK, history: {} };
+    const parsed = JSON.parse(raw);
+    return {
+      stock: Array.isArray(parsed.stock) && parsed.stock.length ? parsed.stock : INITIAL_STOCK,
+      history: parsed.history || {},
+    };
+  } catch {
+    return { stock: INITIAL_STOCK, history: {} };
+  }
+};
+const saveUserData = (user, data) => {
+  if (!user) return;
+  localStorage.setItem(getUserDataKey(user), JSON.stringify({
+    stock: data.stock || INITIAL_STOCK,
+    history: data.history || {},
+  }));
+};
+
+function AuthScreen({ mode, setMode, form, setForm, onSubmit, message }) {
+  return (
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "radial-gradient(circle at top,#15213d,#0b0f1c 45%)", color: "#f1ead3", padding: 24 }}>
+      <div style={{ width: "100%", maxWidth: 440, background: "rgba(11,15,28,0.95)", border: "1px solid rgba(200,168,75,.34)", borderRadius: 18, boxShadow: "0 20px 60px rgba(0,0,0,.45)", overflow: "hidden" }}>
+        <div style={{ background: "linear-gradient(135deg,#132545,#1c315f)", padding: "22px 24px", borderBottom: "1px solid rgba(200,168,75,.25)", textAlign: "center" }}>
+          <div style={{ fontSize: 11, letterSpacing: 3, color: "#9db3d7", textTransform: "uppercase" }}>Sales System</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "#e8c86b", marginTop: 8 }}>{mode === "signin" ? "تسجيل الدخول" : "إنشاء الحساب"}</div>
+        </div>
+
+        <div style={{ padding: 24 }}>
+          <div style={{ display: "flex", gap: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)", borderRadius: 12, padding: 5, marginBottom: 20 }}>
+            <button type="button" onClick={() => setMode("signin")} style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 12px", fontWeight: 700, fontSize: 14, fontFamily: "'Cairo',sans-serif", cursor: "pointer", background: mode === "signin" ? "rgba(200,168,75,.18)" : "transparent", color: mode === "signin" ? "#f5d885" : "#b7bfd6" }}>
+              تسجيل الدخول
+            </button>
+            <button type="button" onClick={() => setMode("signup")} style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 12px", fontWeight: 700, fontSize: 14, fontFamily: "'Cairo',sans-serif", cursor: "pointer", background: mode === "signup" ? "rgba(200,168,75,.18)" : "transparent", color: mode === "signup" ? "#f5d885" : "#b7bfd6" }}>
+              إنشاء حساب
+            </button>
+          </div>
+
+          <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <label style={{ display: "block", marginBottom: 8, color: "#d9d0bf", fontSize: 14 }}>اسم المستخدم</label>
+              <input value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="اكتب اسم المستخدم" style={{ width: "100%", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, color: "#f4edd8", padding: "12px 14px", fontSize: 15, fontFamily: "'Cairo',sans-serif", outline: "none" }} />
+            </div>
+
+            <div>
+              <label style={{ display: "block", marginBottom: 8, color: "#d9d0bf", fontSize: 14 }}>كلمة المرور</label>
+              <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="••••••••" style={{ width: "100%", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, color: "#f4edd8", padding: "12px 14px", fontSize: 15, fontFamily: "'Cairo',sans-serif", outline: "none" }} />
+            </div>
+
+            {mode === "signup" && (
+              <div>
+                <label style={{ display: "block", marginBottom: 8, color: "#d9d0bf", fontSize: 14 }}>تأكيد كلمة المرور</label>
+                <input type="password" value={form.confirmPassword} onChange={e => setForm({ ...form, confirmPassword: e.target.value })} placeholder="أعد كتابة كلمة المرور" style={{ width: "100%", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, color: "#f4edd8", padding: "12px 14px", fontSize: 15, fontFamily: "'Cairo',sans-serif", outline: "none" }} />
+              </div>
+            )}
+
+            {message && <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(255,107,107,.08)", border: "1px solid rgba(255,107,107,.2)", color: "#ffb0b0", fontSize: 13 }}>{message}</div>}
+
+            <button type="submit" style={{ background: "linear-gradient(135deg,#c8a84b,#e8c86b)", border: "none", borderRadius: 10, padding: "12px 16px", fontSize: 16, fontWeight: 800, color: "#1a1400", cursor: "pointer", boxShadow: "0 8px 24px rgba(200,168,75,.35)" }}>
+              {mode === "signin" ? "دخول" : "إنشاء الحساب"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [history, setHistory] = useState(load);
+  const [mode, setMode] = useState("signin");
+  const [form, setForm] = useState({ username: "", password: "", confirmPassword: "" });
+  const [message, setMessage] = useState("");
+  const [currentUser, setCurrentUser] = useState(() => loadSession());
+
+  const logoutUser = () => {
+    setCurrentUser(null);
+    clearSession();
+    setMessage("");
+    setForm({ username: "", password: "", confirmPassword: "" });
+  };
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let timerId = null;
+
+    const resetTimer = () => {
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(() => {
+        logoutUser();
+      }, SESSION_TIMEOUT_MS);
+    };
+
+    const activityEvents = ["mousedown", "mousemove", "keydown", "touchstart", "scroll", "click"];
+
+    activityEvents.forEach(event => window.addEventListener(event, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+      activityEvents.forEach(event => window.removeEventListener(event, resetTimer));
+    };
+  }, [currentUser]);
+
+  const submitAuth = e => {
+    e.preventDefault();
+    const username = form.username.trim();
+    const password = form.password;
+
+    if (!username || !password) {
+      setMessage("برجاء إدخال اسم المستخدم وكلمة المرور");
+      return;
+    }
+
+    const users = loadUsers();
+
+    if (mode === "signup") {
+      if (password.length < 4) {
+        setMessage("كلمة المرور يجب أن تكون 4 أحرف على الأقل");
+        return;
+      }
+      if (form.confirmPassword !== password) {
+        setMessage("تأكيد كلمة المرور غير متطابق");
+        return;
+      }
+      if (users.some(user => user.username.toLowerCase() === username.toLowerCase())) {
+        setMessage("اسم المستخدم موجود بالفعل");
+        return;
+      }
+      const nextUsers = [...users, { username, password }];
+      saveUsers(nextUsers);
+      setCurrentUser(username);
+      saveSession(username);
+      setMessage("");
+      return;
+    }
+
+    const found = users.find(user => user.username.toLowerCase() === username.toLowerCase() && user.password === password);
+    if (!found) {
+      setMessage("اسم المستخدم أو كلمة المرور غير صحيحة");
+      return;
+    }
+
+    setCurrentUser(username);
+    saveSession(username);
+    setMessage("");
+  };
+
+  if (!currentUser) {
+    return <AuthScreen mode={mode} setMode={setMode} form={form} setForm={setForm} onSubmit={submitAuth} message={message} />;
+  }
+
+  return <SalesApp currentUser={currentUser} onLogout={logoutUser} />;
+}
+
+function SalesApp({ currentUser, onLogout }) {
+  const initialUserData = useMemo(() => loadUserData(currentUser), [currentUser]);
+  const [stock, setStock] = useState(initialUserData.stock);
+  const [history, setHistory] = useState(initialUserData.history);
   const [viewDate, setViewDate] = useState(todayStr());
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
   const [raseedInputs, setRaseedInputs] = useState({});
+  const [stockForm, setStockForm] = useState({ bayan: "", qeema: "", raseed: "" });
   const navRef = useRef(null);
 
   const sortedDates = useMemo(() => Object.keys(history).sort(), [history]);
@@ -58,8 +228,13 @@ export default function App() {
   }
 
   const currentDay = useMemo(() => {
-    return history[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
-  }, [viewDate, history]);
+    return history[viewDate] ?? { items: freshItems(coMap(viewDate), stock), closed: false };
+  }, [viewDate, history, stock]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    saveUserData(currentUser, { stock, history });
+  }, [currentUser, stock, history]);
 
   function updateItem(id, field, raw) {
     const val = Math.max(0, Number(raw) || 0);
@@ -78,11 +253,27 @@ export default function App() {
     });
   }
 
+  function updateOriginalBalance(id, raw) {
+    const nextValue = Math.max(0, Number(raw) || 0);
+    setStock(prev => prev.map(item => item.id === id ? { ...item, raseed: nextValue } : item));
+    setHistory(prev => {
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate), stock), closed: false };
+      const items = base.items.map(item => {
+        if (item.id !== id) return item;
+        const diff = nextValue - item.raseed;
+        return { ...item, raseed: nextValue, carryOver: item.carryOver + diff };
+      });
+      const updated = { ...prev, [viewDate]: { ...base, items } };
+      persist(updated); return updated;
+    });
+  }
+
   function addRaseed(id, addAmount) {
     const amount = Math.max(0, Number(addAmount) || 0);
     if (amount === 0) return;
+    setStock(prev => prev.map(item => item.id === id ? { ...item, raseed: item.raseed + amount } : item));
     setHistory(prev => {
-      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate), stock), closed: false };
       const items = base.items.map(item => {
         if (item.id !== id) return item;
         const newRaseed = item.raseed + amount;
@@ -94,9 +285,48 @@ export default function App() {
     });
   }
 
+  function addStockRecord() {
+    const bayan = stockForm.bayan.trim();
+    const qeema = Math.max(0, Number(stockForm.qeema) || 0);
+    const raseed = Math.max(0, Number(stockForm.raseed) || 0);
+    if (!bayan || !qeema) return;
+
+    const newId = getNextStockId(stock);
+    const inserted = { id: newId, bayan, qeema, raseed };
+
+    setStock(prev => [...prev, inserted]);
+    setHistory(prev => {
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate), stock), closed: false };
+      const items = [...base.items, {
+        id: newId,
+        mabea: 0,
+        visa: 0,
+        tawreed: 0,
+        raseed,
+        carryOver: coMap(viewDate) ? (coMap(viewDate)[newId] ?? raseed) : raseed,
+      }];
+      const updated = { ...prev, [viewDate]: { ...base, items } };
+      persist(updated); return updated;
+    });
+    setStockForm({ bayan: "", qeema: "", raseed: "" });
+  }
+
+  function deleteStockRecord(id) {
+    setStock(prev => prev.filter(item => item.id !== id));
+    setHistory(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(date => {
+        if (!updated[date] || !Array.isArray(updated[date].items)) return;
+        updated[date] = { ...updated[date], items: updated[date].items.filter(item => item.id !== id) };
+      });
+      persist(updated);
+      return updated;
+    });
+  }
+
   function handleSave() {
     setHistory(prev => {
-      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate), stock), closed: false };
       const updated = { ...prev, [viewDate]: { ...base, closed: true } };
       persist(updated); return updated;
     });
@@ -105,7 +335,7 @@ export default function App() {
 
   function handleCloseNext() {
     setHistory(prev => {
-      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate), stock), closed: false };
       const updated = { ...prev, [viewDate]: { ...base, closed: true } };
       persist(updated); return updated;
     });
@@ -121,7 +351,7 @@ export default function App() {
 
   /* enriched rows */
   const rows = currentDay.items.map(item => {
-    const s = STOCK.find(s => s.id === item.id);
+    const s = stock.find(s => s.id === item.id);
     const mablagh = item.mabea * s.qeema;
     const kash = (item.mabea - item.visa - item.tawreed) * s.qeema;
     const baqi = item.carryOver - item.mabea;
@@ -387,6 +617,7 @@ export default function App() {
           <div style={{ fontSize: 12, color: "#777", marginLeft: 6 }}>{fmtLong(viewDate)}</div>
           {currentDay.closed && <span className="tag tcl">✔ محفوظ</span>}
           {readOnly && <span className="tag tro">🔒 عرض فقط</span>}
+          <span className="tag tv">⏱️ خروج تلقائي بعد 20 دقيقة</span>
         </div>
 
         {isPast && (
@@ -394,6 +625,23 @@ export default function App() {
             {editing ? "🔒 إغلاق التعديل" : "✏️ تعديل"}
           </button>
         )}
+
+        <button
+          onClick={onLogout}
+          style={{
+            background: "rgba(255,95,95,.1)",
+            border: "1px solid rgba(255,95,95,.3)",
+            color: "#ff8d8d",
+            borderRadius: 10,
+            padding: "9px 16px",
+            fontWeight: 700,
+            fontFamily: "'Cairo',sans-serif",
+            cursor: "pointer",
+            transition: "all .18s"
+          }}
+        >
+          🚪 تسجيل الخروج
+        </button>
 
         {/* Print button — always available */}
         <button className="bprint" onClick={handlePrint}>
@@ -426,6 +674,19 @@ export default function App() {
             <div className="num" style={{ fontSize: 18, fontWeight: 900, color: c.color }}>{c.val.toLocaleString("ar-EG")} ج</div>
           </div>
         ))}
+      </div>
+
+      {/* ══ ADD STOCK RECORD ═══════════════════════════════════════════ */}
+      <div style={{ background: "#121722", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "12px 20px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <input type="text" value={stockForm.bayan} onChange={e => setStockForm(p => ({ ...p, bayan: e.target.value }))}
+          placeholder="اسم البيان" style={{ flex: "2 1 260px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#f0e6c0", padding: "8px 12px", fontFamily: "'Cairo',sans-serif", fontSize: 13 }} />
+        <input type="number" value={stockForm.qeema} onChange={e => setStockForm(p => ({ ...p, qeema: e.target.value }))}
+          placeholder="القيمة" style={{ flex: "1 1 120px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#f0e6c0", padding: "8px 12px", fontFamily: "'Cairo',sans-serif", fontSize: 13 }} />
+        <input type="number" value={stockForm.raseed} onChange={e => setStockForm(p => ({ ...p, raseed: e.target.value }))}
+          placeholder="الرصيد الأصلي" style={{ flex: "1 1 120px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#f0e6c0", padding: "8px 12px", fontFamily: "'Cairo',sans-serif", fontSize: 13 }} />
+        <button onClick={addStockRecord} disabled={!stockForm.bayan.trim() || !Number(stockForm.qeema)} style={{ background: "rgba(80,208,144,.15)", border: "1px solid rgba(80,208,144,.28)", color: "#7de7a8", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontFamily: "'Cairo',sans-serif", cursor: "pointer" }}>
+          + إضافة بيان
+        </button>
       </div>
 
       {/* ══ DAY NAVIGATOR ════════════════════════════════════════════════ */}
@@ -470,9 +731,20 @@ export default function App() {
           <tbody>
             {rows.map(item => (
               <tr key={item.id} className="dr">
-                <td style={{ color: "#444", fontSize: 11 }}>{item.id}</td>
+                <td style={{ color: "#444", fontSize: 11, textAlign: "center", verticalAlign: "middle", padding: "7px 6px" }}>
+                  <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <span>{item.id}</span>
+                    <button type="button" onClick={() => deleteStockRecord(item.id)} disabled={readOnly}
+                      style={{ background: "rgba(255,95,95,.14)", border: "1px solid rgba(255,95,95,.35)", color: "#ff8d8d", borderRadius: 6, padding: "2px 7px", fontSize: 11, cursor: readOnly ? "not-allowed" : "pointer", opacity: readOnly ? 0.5 : 1 }}>
+                      حذف
+                    </button>
+                  </div>
+                </td>
                 <td style={{ textAlign: "right", color: "#e0d8c0", fontWeight: 600 }}>{item.bayan}</td>
-                <td><span className="num" style={{ color: "#505060" }}>{item.raseed}</span></td>
+                <td style={{ background: "rgba(255,255,255,.02)" }}>
+                  <input type="number" className="ci" min={0} value={item.raseed || 0} disabled={readOnly}
+                    onChange={e => updateOriginalBalance(item.id, e.target.value)} />
+                </td>
                 <td style={{ background: "rgba(80,208,144,.03)" }}>
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                     <input type="number" className="ci ci-t" min={0} placeholder="0"
