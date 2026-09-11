@@ -268,6 +268,11 @@ function SalesApp({ currentUser, onLogout }) {
     });
   }
 
+  function updateItemValue(id, raw) {
+    const nextValue = Math.max(0, Number(raw) || 0);
+    setStock(prev => prev.map(item => item.id === id ? { ...item, qeema: nextValue } : item));
+  }
+
   function addRaseed(id, addAmount) {
     const amount = Math.max(0, Number(addAmount) || 0);
     if (amount === 0) return;
@@ -362,6 +367,7 @@ function SalesApp({ currentUser, onLogout }) {
     (a, i) => ({ mablagh: a.mablagh + i.mablagh, visa: a.visa + i.visa * i.qeema, tawreed: a.tawreed + i.tawreed * i.qeema, kash: a.kash + i.kash }),
     { mablagh: 0, visa: 0, tawreed: 0, kash: 0 }
   );
+  
 
   /* ── Print handler ── */
   function handlePrint() {
@@ -762,7 +768,11 @@ function SalesApp({ currentUser, onLogout }) {
                 <td style={{ background: "rgba(100,180,255,.04)" }}>
                   <span className="num" style={{ fontWeight: 700, color: item.carryOver > 0 ? "#9ac8ff" : "#ff6060" }}>{item.carryOver}</span>
                 </td>
-                <td><span className="num" style={{ color: "#c8a84b" }}>{item.qeema}</span></td>
+                <td>
+                  <input type="number" className="ci" min={0} value={item.qeema || 0}
+                    disabled={readOnly}
+                    onChange={e => updateItemValue(item.id, e.target.value)} />
+                </td>
                 <td style={{ background: "rgba(200,168,75,.03)" }}>
                   <input type="number" className="ci" min={0} max={item.carryOver}
                     value={item.mabea || ""} placeholder="0" disabled={readOnly}
