@@ -239,7 +239,7 @@ function SalesApp({ currentUser, onLogout }) {
   function updateItem(id, field, raw) {
     const val = Math.max(0, Number(raw) || 0);
     setHistory(prev => {
-      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate)), closed: false };
+      const base = prev[viewDate] ?? { items: freshItems(coMap(viewDate), stock), closed: false };
       const items = base.items.map(item => {
         if (item.id !== id) return item;
         let u = { ...item, [field]: val };
@@ -735,11 +735,11 @@ function SalesApp({ currentUser, onLogout }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(item => (
+            {rows.map((item, rowIndex) => (
               <tr key={item.id} className="dr">
                 <td style={{ color: "#444", fontSize: 11, textAlign: "center", verticalAlign: "middle", padding: "7px 6px" }}>
                   <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <span>{item.id}</span>
+                    <span>{rowIndex + 1}</span>
                     <button type="button" onClick={() => deleteStockRecord(item.id)} disabled={readOnly}
                       style={{ background: "rgba(255,95,95,.14)", border: "1px solid rgba(255,95,95,.35)", color: "#ff8d8d", borderRadius: 6, padding: "2px 7px", fontSize: 11, cursor: readOnly ? "not-allowed" : "pointer", opacity: readOnly ? 0.5 : 1 }}>
                       حذف
