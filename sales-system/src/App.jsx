@@ -45,17 +45,18 @@ const saveSession = user => localStorage.setItem(SESSION_KEY, JSON.stringify(use
 const clearSession = () => localStorage.removeItem(SESSION_KEY);
 const getUserDataKey = user => `sales_user_data_${encodeURIComponent((user || "").toLowerCase())}`;
 const loadUserData = user => {
-  if (!user) return { stock: INITIAL_STOCK, history: {} };
+  if (!user) return { stock: INITIAL_STOCK, history: {}, supplies: [] };
   try {
     const raw = localStorage.getItem(getUserDataKey(user));
-    if (!raw) return { stock: INITIAL_STOCK, history: {} };
+    if (!raw) return { stock: INITIAL_STOCK, history: {}, supplies: [] };
     const parsed = JSON.parse(raw);
     return {
       stock: Array.isArray(parsed.stock) && parsed.stock.length ? parsed.stock : INITIAL_STOCK,
       history: parsed.history || {},
+      supplies: Array.isArray(parsed.supplies) ? parsed.supplies : [],
     };
   } catch {
-    return { stock: INITIAL_STOCK, history: {} };
+    return { stock: INITIAL_STOCK, history: {}, supplies: [] };
   }
 };
 const saveUserData = (user, data) => {
@@ -63,6 +64,7 @@ const saveUserData = (user, data) => {
   localStorage.setItem(getUserDataKey(user), JSON.stringify({
     stock: data.stock || INITIAL_STOCK,
     history: data.history || {},
+    supplies: data.supplies || [],
   }));
 };
 
@@ -206,11 +208,14 @@ function SalesApp({ currentUser, onLogout }) {
   const initialUserData = useMemo(() => loadUserData(currentUser), [currentUser]);
   const [stock, setStock] = useState(initialUserData.stock);
   const [history, setHistory] = useState(initialUserData.history);
+  const [supplies, setSupplies] = useState(initialUserData.supplies);
   const [viewDate, setViewDate] = useState(todayStr());
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
   const [raseedInputs, setRaseedInputs] = useState({});
   const [stockForm, setStockForm] = useState({ bayan: "", qeema: "", raseed: "" });
+  const [supplyInput, setSupplyInput] = useState("");
+  const [supplyWarning, setSupplyWarning] = useState("");
   const navRef = useRef(null);
 
   const sortedDates = useMemo(() => Object.keys(history).sort(), [history]);
@@ -233,8 +238,15 @@ function SalesApp({ currentUser, onLogout }) {
 
   useEffect(() => {
     if (!currentUser) return;
-    saveUserData(currentUser, { stock, history });
-  }, [currentUser, stock, history]);
+    saveUserData(currentUser, { stock, history, supplies });
+  }, [currentUser, stock, history, supplies]);
+
+  function addSupply() {
+    const amount = Math.max(0, Number(supplyInput) || 0);
+    if (amount === 0) return;
+    setSupplies(prev => [...prev, { id: Date.now(), date: viewDate, amount }]);
+    setSupplyInput("");
+  }
 
   function updateItem(id, field, raw) {
     const val = Math.max(0, Number(raw) || 0);
@@ -245,7 +257,22 @@ function SalesApp({ currentUser, onLogout }) {
         let u = { ...item, [field]: val };
         if (field === "mabea") u.mabea = Math.min(val, item.carryOver);
         if (field === "visa") u.visa = Math.min(val, Math.max(0, u.mabea - u.tawreed));
-        if (field === "tawreed") u.tawreed = Math.min(val, Math.max(0, u.mabea - u.visa));
+        if (field === "tawreed") {
+          const dates = [...new Set([...Object.keys(prev).filter(date => date <= viewDate), viewDate])];
+          const soldAcrossDays = dates.reduce((total, date) => {
+            const day = date === viewDate ? base : prev[date];
+            const dayItem = day?.items?.find(dayRow => dayRow.id === id);
+            return total + (dayItem?.mabea || 0);
+          }, 0);
+          const suppliedBeforeThisEntry = dates.reduce((total, date) => {
+            const day = date === viewDate ? base : prev[date];
+            const dayItem = day?.items?.find(dayRow => dayRow.id === id);
+            return total + (date === viewDate ? 0 : (dayItem?.tawreed || 0));
+          }, 0);
+          const maxAvailable = Math.max(0, soldAcrossDays - suppliedBeforeThisEntry);
+          u.tawreed = Math.min(val, maxAvailable);
+          setSupplyWarning(val > maxAvailable ? `أقصى توريد متاح لهذا الصنف هو ${maxAvailable} حسب إجمالي المباع` : "");
+        }
         return u;
       });
       const updated = { ...prev, [viewDate]: { ...base, items } };
@@ -367,6 +394,25 @@ function SalesApp({ currentUser, onLogout }) {
     (a, i) => ({ mablagh: a.mablagh + i.mablagh, visa: a.visa + i.visa * i.qeema, tawreed: a.tawreed + i.tawreed * i.qeema, kash: a.kash + i.kash }),
     { mablagh: 0, visa: 0, tawreed: 0, kash: 0 }
   );
+
+  const accumulatedCash = useMemo(() => {
+    const dates = [...new Set([...sortedDates.filter(date => date <= viewDate), viewDate])].sort();
+    const grossCash = dates.reduce((balance, date) => {
+      const day = date === viewDate ? currentDay : history[date];
+      const dayCash = (day?.items || []).reduce((total, item) => {
+        const stockItem = stock.find(stockRecord => stockRecord.id === item.id);
+        if (!stockItem) return total;
+        return total + (item.mabea - item.visa - item.tawreed) * stockItem.qeema;
+      }, 0);
+      return balance + dayCash;
+    }, 0);
+    const recordedSupplies = supplies
+      .filter(supply => supply.date <= viewDate)
+      .reduce((total, supply) => total + supply.amount, 0);
+    return Math.max(0, grossCash - recordedSupplies);
+  }, [currentDay, history, sortedDates, stock, supplies, viewDate]);
+
+  const displayTotals = { ...totals, kash: accumulatedCash };
   
 
   /* ── Print handler ── */
@@ -481,7 +527,7 @@ function SalesApp({ currentUser, onLogout }) {
   <div class="sbox total"><div class="slbl">📊 إجمالي المبيعات</div><div class="sval">${totals.mablagh.toLocaleString("ar-EG")} ج</div></div>
   <div class="sbox visa"><div class="slbl">💳 فيزا</div><div class="sval">${totals.visa.toLocaleString("ar-EG")} ج</div></div>
   <div class="sbox tawreed"><div class="slbl">🏦 توريد</div><div class="sval">${totals.tawreed.toLocaleString("ar-EG")} ج</div></div>
-  <div class="sbox kash"><div class="slbl">💵 كاش</div><div class="sval">${totals.kash.toLocaleString("ar-EG")} ج</div></div>
+  <div class="sbox kash"><div class="slbl">💵 الكاش المتراكم</div><div class="sval">${displayTotals.kash.toLocaleString("ar-EG")} ج</div></div>
 </div>
 
 <!-- MAIN TABLE -->
@@ -508,7 +554,7 @@ function SalesApp({ currentUser, onLogout }) {
       <td>${totals.mablagh.toLocaleString("ar-EG")} ج</td>
       <td>${totals.visa.toLocaleString("ar-EG")} ج</td>
       <td>${totals.tawreed.toLocaleString("ar-EG")} ج</td>
-      <td>${totals.kash.toLocaleString("ar-EG")} ج</td>
+      <td>${displayTotals.kash.toLocaleString("ar-EG")} ج</td>
       <td></td>
     </tr>
   </tbody>
@@ -517,7 +563,7 @@ function SalesApp({ currentUser, onLogout }) {
 <!-- AFTER TAWREED -->
 <div class="after-tawreed">
   <span class="lbl">الإجمالي بعد خصم التوريد:</span>
-  <span class="val">${(totals.mablagh - totals.tawreed).toLocaleString("ar-EG")} جنيه</span>
+  <span class="val">${displayTotals.kash.toLocaleString("ar-EG")} جنيه</span>
 </div>
 
 <!-- FOOTER / SIGNATURES -->
@@ -624,6 +670,7 @@ function SalesApp({ currentUser, onLogout }) {
           {currentDay.closed && <span className="tag tcl">✔ محفوظ</span>}
           {readOnly && <span className="tag tro">🔒 عرض فقط</span>}
           <span className="tag tv">⏱️ خروج تلقائي بعد 20 دقيقة</span>
+          {supplyWarning && <span className="tag tro">⚠️ {supplyWarning}</span>}
         </div>
 
         {isPast && (
@@ -631,6 +678,25 @@ function SalesApp({ currentUser, onLogout }) {
             {editing ? "🔒 إغلاق التعديل" : "✏️ تعديل"}
           </button>
         )}
+
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            type="number"
+            min={0}
+            value={supplyInput}
+            onChange={e => setSupplyInput(e.target.value)}
+            placeholder="قيمة التوريد"
+            style={{ width: 125, background: "rgba(80,208,144,.08)", border: "1px solid rgba(80,208,144,.35)", borderRadius: 8, color: "#9af0b8", padding: "8px 10px", fontFamily: "'Cairo',sans-serif", fontSize: 12, outline: "none" }}
+          />
+          <button
+            className="bsave"
+            onClick={addSupply}
+            disabled={!Number(supplyInput)}
+            style={{ padding: "9px 14px", opacity: Number(supplyInput) ? 1 : 0.5, cursor: Number(supplyInput) ? "pointer" : "not-allowed" }}
+          >
+            🏦 تسجيل توريد
+          </button>
+        </div>
 
         <button
           onClick={onLogout}
@@ -672,8 +738,8 @@ function SalesApp({ currentUser, onLogout }) {
           { label: "الإجمالي", val: totals.mablagh, color: "#c8a84b", icon: "📊" },
           { label: "فيزا", val: totals.visa, color: "#64b4ff", icon: "💳" },
           { label: "توريد", val: totals.tawreed, color: "#50d090", icon: "🏦" },
-          { label: "كاش", val: totals.kash, color: "#ffb347", icon: "💵" },
-          { label: "بعد التوريد", val: totals.mablagh - totals.tawreed, color: "#e8e0c0", icon: "🗓" },
+          { label: "الكاش المتراكم", val: displayTotals.kash, color: "#ffb347", icon: "💵" },
+          { label: "بعد التوريد", val: displayTotals.kash, color: "#e8e0c0", icon: "🗓" },
         ].map(c => (
           <div key={c.label} style={{ flex: "1 1 120px", background: "rgba(255,255,255,.03)", border: `1px solid ${c.color}28`, borderRadius: 10, padding: "10px 14px" }}>
             <div style={{ fontSize: 10.5, color: "#666", marginBottom: 2 }}>{c.icon} {c.label}</div>
@@ -805,7 +871,7 @@ function SalesApp({ currentUser, onLogout }) {
               <td><span className="num" style={{ color: "#e8c86b" }}>{totals.mablagh.toLocaleString("ar-EG")} ج</span></td>
               <td><span className="num" style={{ color: "#64b4ff" }}>{totals.visa.toLocaleString("ar-EG")} ج</span></td>
               <td><span className="num" style={{ color: "#50d090" }}>{totals.tawreed.toLocaleString("ar-EG")} ج</span></td>
-              <td><span className="num" style={{ color: "#ffb347" }}>{totals.kash.toLocaleString("ar-EG")} ج</span></td>
+              <td><span className="num" style={{ color: "#ffb347" }}>{displayTotals.kash.toLocaleString("ar-EG")} ج</span></td>
               <td></td>
             </tr>
           </tbody>
